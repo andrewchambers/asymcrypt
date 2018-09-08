@@ -144,11 +144,13 @@ int main(int argc, char **argv) {
 		die("unimplemented\n");
 	} else if (CMD("verify")) {
 		die("unimplemented\n");
-	} else if (CMD("key")) {
+	} else if (CMD("encrypt")) {
 		die("unimplemented\n");
-	} else if (CMD("key")) {
+	} else if (CMD("decrypt")) {
 		die("unimplemented\n");
-	} else {
+	} else if (CMD("info")) {
+		die("unimplemented\n");
+	}  else {
 		help();
 	}
 	#undef CMD
