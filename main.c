@@ -136,6 +136,7 @@ void read_sig(FILE *f) {
     die("input data is not a asymcrypt signature\n");
 
   must_read_buf(f, key_id, sizeof(key_id));
+  must_read_buf(f, buf, sizeof(buf));
   signed_sha256_len = (long long unsigned int)(buf[0] << 8) | buf[1];
 
   if (signed_sha256_len > sizeof(signed_sha256))
@@ -220,9 +221,8 @@ void cmd_sign(char *secretkey) {
 
   write_hdr(TYPE_SIG);
   write_buf(key_id, sizeof(key_id));
-
   write_i16((int16_t)signed_sha256_len);
-  write_buf(signed_sha256, sizeof(signed_sha256_len));
+  write_buf(signed_sha256, signed_sha256_len);
 }
 
 void cmd_verify(char *publickey, char *sigfile) {
