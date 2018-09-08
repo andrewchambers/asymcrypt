@@ -20,7 +20,7 @@ asymcrypt p(ubkey) < secret.key > public.key
 asymcrypt e(ncrypt) public.key < plain.txt > encrypted.txt
 asymcrypt d(ecrypt) secret.key < plain.txt > encrypted.txt
 asymcrypt s(ign) secret.key < something > something.sig
-asymcrypt v(erify) public.key -sig something.sig < something
+asymcrypt v(erify) public.key something.sig < something
 asymcrypt i(nfo) < encrypted.txt
 asymcrypt i(nfo) < secret.key
 asymcrypt i(nfo) < public.key

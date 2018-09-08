@@ -122,6 +122,28 @@ void read_public_key(FILE *f) {
   has_sk = 0;
 }
 
+void read_sig(FILE *f) {
+  int16_t version;
+  int16_t type;
+  unsigned char buf[2];
+
+  read_hdr(f, &version, &type);
+
+  if (version != 1)
+    die("unknown key version\n");
+
+  if (type != TYPE_SIG)
+    die("input data is not a asymcrypt signature\n");
+
+  must_read_buf(f, key_id, sizeof(key_id));
+  signed_sha256_len = (long long unsigned int)(buf[0] << 8) | buf[1];
+
+  if (signed_sha256_len > sizeof(signed_sha256))
+    die("bad signature length\n");
+
+  must_read_buf(f, signed_sha256, signed_sha256_len);
+}
+
 void cmd_key() {
   write_hdr(TYPE_SECRETKEY);
   if (crypto_box_keypair(crypto_box_pk, crypto_box_sk) != 0) {
@@ -160,16 +182,7 @@ void assert_sk_perms(char *secretkey) {
     die("secret key is world accessible\n");
 }
 
-void cmd_sign(char *secretkey) {
-
-  assert_sk_perms(secretkey);
-
-  FILE *f = fopen(secretkey, "rb");
-  if (!f)
-    die("error opening secret key\n");
-
-  read_secret_key(f);
-
+void hash_stdin() {
   crypto_hash_sha256_init(&sha256_state);
 
   // XXX swap everything to unistd read/write?
@@ -185,6 +198,23 @@ void cmd_sign(char *secretkey) {
   }
 
   crypto_hash_sha256_final(&sha256_state, sha256);
+}
+
+void cmd_sign(char *secretkey) {
+
+  assert_sk_perms(secretkey);
+
+  FILE *f = fopen(secretkey, "rb");
+  if (!f)
+    die("error opening secret key\n");
+
+  read_secret_key(f);
+
+  if (fclose(f))
+    die("unable to close key");
+
+  hash_stdin();
+
   crypto_sign(signed_sha256, &signed_sha256_len, sha256, sizeof(sha256),
               crypto_sign_sk);
 
@@ -193,6 +223,42 @@ void cmd_sign(char *secretkey) {
 
   write_i16((int16_t)signed_sha256_len);
   write_buf(signed_sha256, sizeof(signed_sha256_len));
+}
+
+void cmd_verify(char *publickey, char *sigfile) {
+
+  FILE *f = fopen(publickey, "rb");
+  if (!f)
+    die("error opening secret key\n");
+
+  read_public_key(f);
+
+  if (fclose(f))
+    die("unable to close key");
+
+  f = fopen(sigfile, "rb");
+  if (!f)
+    die("error opening secret key\n");
+
+  read_sig(f);
+
+  if (fclose(f))
+    die("unable to close sig\n");
+
+  hash_stdin();
+
+  unsigned char m[sizeof(signed_sha256)];
+  unsigned long long mlen;
+
+  if (crypto_sign_open(m, &mlen, signed_sha256, signed_sha256_len,
+                       crypto_sign_pk) != 0)
+    die("signature failed\n");
+
+  if (mlen != sizeof(sha256))
+    die("signature lengths differ\n");
+
+  if (memcmp(m, sha256, sizeof(sha256)) != 0)
+    die("signature differs\n");
 }
 
 void help() {
@@ -214,7 +280,9 @@ int main(int argc, char **argv) {
       help();
     cmd_sign(argv[2]);
   } else if (CMD("verify")) {
-    die("unimplemented\n");
+    if (argc != 4)
+      help();
+    cmd_verify(argv[2], argv[3]);
   } else if (CMD("encrypt")) {
     die("unimplemented\n");
   } else if (CMD("decrypt")) {
