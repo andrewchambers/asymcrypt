@@ -4,6 +4,8 @@
 #include <string.h>
 #include <sodium.h>
 
+#define KEYID_BYTES 32
+
 #define TYPE_PRIVKEY 0
 #define TYPE_PUBKEY 1
 #define TYPE_END 2
@@ -11,6 +13,7 @@
 int has_sk = 0;
 int has_pk = 0;
 
+unsigned char key_id[KEYID_BYTES];
 unsigned char crypto_box_pk[crypto_box_PUBLICKEYBYTES];
 unsigned char crypto_box_sk[crypto_box_SECRETKEYBYTES];
 unsigned char crypto_sign_pk[crypto_sign_PUBLICKEYBYTES];
@@ -39,7 +42,7 @@ write_i16(int16_t type)
 void
 write_hdr(int16_t type)
 {
-	char *ident = "asymcrypt";
+	unsigned char *ident = (unsigned char *)"asymcrypt";
 	write_buf(ident, strlen("asymcrypt"));
 	// version
 	write_i16(1);
@@ -60,7 +63,7 @@ read_hdr(FILE *f, int16_t *version, int16_t *type)
 	unsigned char buf[9 + 2 + 2];
 	read_buf(stdin, buf, sizeof(buf));
 
-	if (strncmp(buf, "asymcrypt", 9) != 0)
+	if (strncmp((const char *)buf, "asymcrypt", 9) != 0)
 		die("not a valid asymcrypt object\n");
 
 	*version = (int16_t)(buf[9] << 8) | buf[10];
@@ -85,6 +88,10 @@ cmd_key()
     	die("error generating crypto_sign keypair\n");
 		exit(1);
     }
+
+    randombytes_buf(key_id, sizeof(key_id));
+
+    write_buf(key_id, sizeof(key_id));
     write_buf(crypto_box_pk, sizeof(crypto_box_pk));
     write_buf(crypto_box_sk, sizeof(crypto_box_sk));
     write_buf(crypto_sign_pk, sizeof(crypto_sign_pk));
@@ -98,15 +105,21 @@ cmd_pubkey()
 	int16_t type;
 
 	read_hdr(stdin, &version, &type);
+
+	if (version != 1)
+		die("unknown key version\n");
+
 	if (type != TYPE_PRIVKEY)
 		die("input data is not a asymcrypt private key\n");
 
+	read_buf(stdin, key_id, sizeof(key_id));
 	read_buf(stdin, crypto_box_pk, sizeof(crypto_box_pk));
     read_buf(stdin, crypto_box_sk, sizeof(crypto_box_sk));
     read_buf(stdin, crypto_sign_pk, sizeof(crypto_sign_pk));
     read_buf(stdin, crypto_sign_sk, sizeof(crypto_sign_sk));
 
     write_hdr(TYPE_PUBKEY);
+    write_buf(key_id, sizeof(key_id));
     write_buf(crypto_box_pk, sizeof(crypto_box_pk));
     write_buf(crypto_sign_pk, sizeof(crypto_sign_pk));
 }
