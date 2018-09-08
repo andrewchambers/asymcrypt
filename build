@@ -15,4 +15,4 @@ then
 fi
 # Build command
 
-gcc $(pkg-config libsodium --cflags --libs) -Wall --pedantic --std=c99 -O2 main.c -o asymcrypt
+gcc $(pkg-config libsodium --cflags --libs) -Wfatal-errors -Wall --pedantic --std=c99 -O2 main.c -o asymcrypt

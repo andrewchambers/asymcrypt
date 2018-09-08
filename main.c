@@ -3,12 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define KEYID_BYTES 32
 
 #define TYPE_SECRETKEY 0
 #define TYPE_PUBLICKEY 1
-#define TYPE_END 2
+#define TYPE_SIG 2
+#define TYPE_END 3
 
 int has_sk = 0;
 
@@ -17,6 +19,10 @@ unsigned char crypto_box_pk[crypto_box_PUBLICKEYBYTES];
 unsigned char crypto_box_sk[crypto_box_SECRETKEYBYTES];
 unsigned char crypto_sign_pk[crypto_sign_PUBLICKEYBYTES];
 unsigned char crypto_sign_sk[crypto_sign_SECRETKEYBYTES];
+unsigned char sha256[crypto_hash_sha256_BYTES];
+crypto_hash_sha256_state sha256_state;
+unsigned char signed_sha256[crypto_hash_sha256_BYTES + crypto_sign_BYTES];
+unsigned long long signed_sha256_len;
 
 #define die(msg)                                                               \
   do {                                                                         \
@@ -46,14 +52,22 @@ void write_hdr(int16_t type) {
   write_i16(type);
 }
 
-void read_buf(FILE *f, unsigned char *buf, size_t n) {
+void must_read_buf(FILE *f, unsigned char *buf, size_t n) {
   if (fread(buf, 1, n, f) != n)
     die("error reading input\n");
 }
 
+int read_buf(FILE *f, unsigned char *buf, size_t n) {
+  int nread = fread(buf, 1, sizeof(buf), stdin);
+  if (nread != sizeof(buf))
+    if (!feof(stdin))
+      die("an error occured");
+  return nread;
+}
+
 void read_hdr(FILE *f, int16_t *version, int16_t *type) {
   unsigned char buf[9 + 2 + 2];
-  read_buf(f, buf, sizeof(buf));
+  must_read_buf(f, buf, sizeof(buf));
 
   if (strncmp((const char *)buf, "asymcrypt", 9) != 0)
     die("not a valid asymcrypt object\n");
@@ -80,11 +94,11 @@ void read_secret_key(FILE *f) {
   if (type != TYPE_SECRETKEY)
     die("input data is not a asymcrypt secret key\n");
 
-  read_buf(f, key_id, sizeof(key_id));
-  read_buf(f, crypto_box_pk, sizeof(crypto_box_pk));
-  read_buf(f, crypto_box_sk, sizeof(crypto_box_sk));
-  read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
-  read_buf(f, crypto_sign_sk, sizeof(crypto_sign_sk));
+  must_read_buf(f, key_id, sizeof(key_id));
+  must_read_buf(f, crypto_box_pk, sizeof(crypto_box_pk));
+  must_read_buf(f, crypto_box_sk, sizeof(crypto_box_sk));
+  must_read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
+  must_read_buf(f, crypto_sign_sk, sizeof(crypto_sign_sk));
 
   has_sk = 1;
 }
@@ -101,9 +115,9 @@ void read_public_key(FILE *f) {
   if (type != TYPE_PUBLICKEY)
     die("input data is not a asymcrypt public key\n");
 
-  read_buf(f, key_id, sizeof(key_id));
-  read_buf(f, crypto_box_pk, sizeof(crypto_box_pk));
-  read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
+  must_read_buf(f, key_id, sizeof(key_id));
+  must_read_buf(f, crypto_box_pk, sizeof(crypto_box_pk));
+  must_read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
 
   has_sk = 0;
 }
@@ -137,6 +151,50 @@ void cmd_pubkey() {
   write_buf(crypto_sign_pk, sizeof(crypto_sign_pk));
 }
 
+void assert_sk_perms(char *secretkey) {
+  struct stat buffer;
+  if (stat(secretkey, &buffer))
+    die("error checking key permissions\n");
+
+  if ((buffer.st_mode & 0007) != 0)
+    die("secret key is world accessible\n");
+}
+
+void cmd_sign(char *secretkey) {
+
+  assert_sk_perms(secretkey);
+
+  FILE *f = fopen(secretkey, "rb");
+  if (!f)
+    die("error opening secret key\n");
+
+  read_secret_key(f);
+
+  crypto_hash_sha256_init(&sha256_state);
+
+  // XXX swap everything to unistd read/write?
+  // extra copy from that buf.
+  unsigned char buf[4096];
+  while (1) {
+    int n = read_buf(stdin, buf, sizeof(buf));
+
+    crypto_hash_sha256_update(&sha256_state, buf, n);
+
+    if (n != sizeof(buf))
+      break;
+  }
+
+  crypto_hash_sha256_final(&sha256_state, sha256);
+  crypto_sign(signed_sha256, &signed_sha256_len, sha256, sizeof(sha256),
+              crypto_sign_sk);
+
+  write_hdr(TYPE_SIG);
+  write_buf(key_id, sizeof(key_id));
+
+  write_i16((int16_t)signed_sha256_len);
+  write_buf(signed_sha256, sizeof(signed_sha256_len));
+}
+
 void help() {
 #include "help.inc"
   exit(1);
@@ -152,7 +210,9 @@ int main(int argc, char **argv) {
   } else if (CMD("pubkey")) {
     cmd_pubkey();
   } else if (CMD("sign")) {
-    die("unimplemented\n");
+    if (argc != 3)
+      help();
+    cmd_sign(argv[2]);
   } else if (CMD("verify")) {
     die("unimplemented\n");
   } else if (CMD("encrypt")) {
@@ -168,7 +228,6 @@ int main(int argc, char **argv) {
 
   if (fflush(stdout) != 0) {
     die("error flushing output\n");
-    exit(1);
   }
 
   return 0;
