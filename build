@@ -14,4 +14,5 @@ then
 	pandoc -f markdown -s -t man -o asymcrypt.1 README.md
 fi
 # Build command
-gcc -O2 main.c -o asymcrypt
+
+gcc $(pkg-config libsodium --cflags --libs) -O2 main.c -o asymcrypt
