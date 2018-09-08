@@ -37,26 +37,19 @@ Encrypt and sign reject world readable secret keys.
 When decrypting, only verified data is sent to stdout.
 
 When decrypting, a truncated data stream results in error.
+
+The info command outputs a single line with 3 fields
+
+$VERSION $TYPE $KEYID
+
+example:
+
+  V1 secretkey KEYID
+  V1 publickey KEYID
+  V1 signature KEYID
+  V1 ciphertext KEYID
 ```
 
-### info command output
-
-secret key
-```
-secretkey V1 KEYID
-```
-public key
-```
-publickey V1 KEYID
-```
-signature
-```
-signature V1 KEYID
-```
-ciphertext
-```
-ciphertext V1 KEYID
-```
 
 # SEE ALSO
 
