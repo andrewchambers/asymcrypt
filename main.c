@@ -6,20 +6,25 @@
 #include <sys/stat.h>
 
 #define KEYID_BYTES 32
+#define MESSAGE_SIZE 16384
 
 #define TYPE_SECRETKEY 0
 #define TYPE_PUBLICKEY 1
 #define TYPE_SIG 2
-#define TYPE_END 3
+#define TYPE_CIPHERTEXT 3
+#define TYPE_END 4
 
 int has_sk = 0;
 
 unsigned char key_id[KEYID_BYTES];
 unsigned char crypto_box_pk[crypto_box_PUBLICKEYBYTES];
 unsigned char crypto_box_sk[crypto_box_SECRETKEYBYTES];
+unsigned char ephemeral_crypto_box_pk[crypto_box_PUBLICKEYBYTES];
+unsigned char ephemeral_crypto_box_sk[crypto_box_SECRETKEYBYTES];
 unsigned char crypto_sign_pk[crypto_sign_PUBLICKEYBYTES];
 unsigned char crypto_sign_sk[crypto_sign_SECRETKEYBYTES];
 unsigned char sha256[crypto_hash_sha256_BYTES];
+unsigned char nonce[crypto_box_NONCEBYTES];
 crypto_hash_sha256_state sha256_state;
 unsigned char signed_sha256[crypto_hash_sha256_BYTES + crypto_sign_BYTES];
 unsigned long long signed_sha256_len;
@@ -248,7 +253,7 @@ void cmd_verify(char *publickey, char *sigfile) {
   if (strlen(publickey)) {
     FILE *f = fopen(publickey, "rb");
     if (!f)
-      die("error opening secret key\n");
+      die("error opening public key\n");
 
     read_public_key(f);
 
@@ -287,6 +292,65 @@ void cmd_verify(char *publickey, char *sigfile) {
     die("signature differs\n");
 }
 
+void increment_nonce() {
+  for (int i = 0; i < sizeof(nonce); i++) {
+    int next = (nonce[i] + 1) & 0xff;
+    nonce[i] = next;
+    if (next != 0)
+      break;
+  }
+}
+
+void cmd_encrypt(char *publickey) {
+
+  if (strlen(publickey)) {
+    FILE *f = fopen(publickey, "rb");
+    if (!f)
+      die("error opening public key\n");
+
+    read_public_key(f);
+
+    if (fclose(f))
+      die("unable to close key\n");
+  } else {
+    read_public_key(stdin);
+  }
+
+  randombytes_buf(nonce, sizeof(nonce));
+  if (crypto_box_keypair(ephemeral_crypto_box_pk, ephemeral_crypto_box_sk) !=
+      0) {
+    die("error generating ephemeral crypto_box keypair\n");
+    exit(1);
+  }
+
+  write_hdr(TYPE_CIPHERTEXT);
+  write_buf(key_id, sizeof(key_id));
+  write_buf(ephemeral_crypto_box_pk, sizeof(ephemeral_crypto_box_pk));
+
+  unsigned char buf[MESSAGE_SIZE];
+  unsigned char out_buf[sizeof(buf)];
+
+  while (1) {
+    size_t n_to_read = sizeof(buf) - crypto_box_BOXZEROBYTES - 2;
+    size_t n = read_buf(stdin, buf + crypto_box_BOXZEROBYTES + 2, n_to_read);
+
+    buf[crypto_box_BOXZEROBYTES + 0] = (n >> 8) & 0xff;
+    buf[crypto_box_BOXZEROBYTES + 1] = n & 0xff;
+
+    if (crypto_box(out_buf, buf, sizeof(buf), nonce, crypto_box_pk,
+                   ephemeral_crypto_box_sk) != 0)
+      die("error encrypting message\n");
+
+    write_buf(nonce, sizeof(nonce));
+    write_buf(out_buf, sizeof(out_buf));
+
+    increment_nonce();
+
+    if (n < n_to_read)
+      break;
+  }
+}
+
 void help() {
 #include "help.inc"
   exit(1);
@@ -321,9 +385,14 @@ int main(int argc, char **argv) {
     else if (argc == 4)
       cmd_verify(argv[2], argv[3]);
     else
-      die("bad argument count for sign command\n");
+      die("bad argument count for verify command\n");
   } else if (CMD("encrypt")) {
-    die("unimplemented\n");
+    if (argc == 2)
+      cmd_encrypt(0);
+    else if (argc == 3)
+      cmd_encrypt(argv[2]);
+    else
+      die("bad argument count for encrypt command\n");
   } else if (CMD("decrypt")) {
     die("unimplemented\n");
   } else if (CMD("info")) {
