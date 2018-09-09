@@ -52,7 +52,6 @@ void write_hdr(int16_t type) {
   write_buf(ident, strlen("asymcrypt"));
   // version
   write_u16(1);
-  // type
   write_u16(type);
 }
 
@@ -151,14 +150,10 @@ void read_sig(FILE *f) {
 
 void cmd_key() {
   write_hdr(TYPE_SECRETKEY);
-  if (crypto_box_keypair(crypto_box_pk, crypto_box_sk) != 0) {
+  if (crypto_box_keypair(crypto_box_pk, crypto_box_sk) != 0)
     die("error generating crypto_box keypair\n");
-    exit(1);
-  }
-  if (crypto_sign_keypair(crypto_sign_pk, crypto_sign_sk) != 0) {
+  if (crypto_sign_keypair(crypto_sign_pk, crypto_sign_sk) != 0)
     die("error generating crypto_sign keypair\n");
-    exit(1);
-  }
 
   randombytes_buf(key_id, sizeof(key_id));
 
@@ -350,9 +345,8 @@ void cmd_encrypt(char *publickey) {
 
     increment_nonce();
 
-    if (n < n_to_read) {
+    if (n < n_to_read)
       break;
-    }
   }
 }
 
