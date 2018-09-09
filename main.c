@@ -5,7 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define KEYID_BYTES 32
+#define KEYID_BYTES 16
 /* must fit inside u16 */
 #define MESSAGE_SIZE 16384
 

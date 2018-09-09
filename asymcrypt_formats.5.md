@@ -12,7 +12,7 @@ All base constants come from the NACL cryptographic api.
 magic:         "asymcrypt"
 version:       be_u16(1)
 type:          be_u16(0)
-keyid:         byte[keyid_len]
+keyid:         byte[keyid_len=16]
 pubenckey:     byte[crypto_box_pk_len]
 secenckey:     byte[crypto_box_sk_len]
 pubsigkey:     byte[crypto_sign_pk_len]
