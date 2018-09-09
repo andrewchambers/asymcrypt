@@ -9,6 +9,8 @@ asymcrypt - A tool for asymmetric cryptography.
 # SYNOPSIS
 
 Generate public or private keys, sign, verify, encrypt or decrypt data.
+Simple, reliable and auditable. The tool does zero memory allocations during usage,
+it is extremely fast.
 
 # USAGE
 
@@ -21,7 +23,7 @@ asymcrypt p(ubkey) secret.key > public.key
 asymcrypt e(ncrypt) public.key < plain.txt > encrypted.txt
 asymcrypt e(ncrypt) <(cat public.key plain.txt) > encrypted.txt
 asymcrypt d(ecrypt) secret.key < plain.txt > encrypted.txt
-asymcrypt d(ecrypt) secret.key <(cat secret.key plain.txt) > encrypted.txt
+asymcrypt d(ecrypt) <(cat secret.key plain.txt) > encrypted.txt
 asymcrypt s(ign) secret.key < something > something.sig
 asymcrypt s(ign) <(cat secret.key something) > something.sig
 asymcrypt v(erify) public.key something.sig < something
@@ -44,7 +46,11 @@ When decrypting, only verified data is sent to stdout.
 
 When decrypting, a truncated data stream results in error.
 
-The info command outputs a single line with 3 fields
+The info command outputs a single line with 3 fields.
+
+If arguments are not specified for encrypt, decrypt, sign and verify, they
+will be read in order from stdin. This allows scripts to never write key material
+to disk.
 
 $VERSION $TYPE $KEYID
 
