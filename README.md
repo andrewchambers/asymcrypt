@@ -11,6 +11,8 @@ asymcrypt - A tool for asymmetric cryptography.
 Generate public or private keys, sign, verify, encrypt or decrypt data.
 Simple, reliable and auditable. The tool does zero memory allocations during usage, so it should be very fast.
 
+Internally the tool uses the nacl cryptography API.
+
 # USAGE
 
 ```
