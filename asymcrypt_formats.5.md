@@ -1,4 +1,4 @@
-% asymcrypt(3)
+% asymcrypt_formats(5)
 % Andrew Chambers
 % 2018
 
