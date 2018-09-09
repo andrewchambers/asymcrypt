@@ -40,7 +40,7 @@ keyid:         byte[keyid_len]
 signature:     byte[crypto_hash_sha256_BYTES + crypto_sign_BYTES]
 ```
 
-where crypto_sign_open(signature, crypto_sign_pk) == sha256(data_stream)
+where crypto_sign_open(signature, pubsigkey) == sha256(data_stream)
 
 ## Cipher text version 1 format
 
@@ -63,7 +63,7 @@ padding: byte[crypto_box_BOXZEROBYTES];
 ciphertext: byte[msgsize-crypto_box_BOXZEROBYTES];
 ```
 
-where crypto_box_open(message, nonce + msg_index, ephemeral_crypto_box_pk, crypto_box_sk) is:
+where crypto_box_open(message, nonce + msg_index, ephemeral_pubkey, secenckey) is:
 
 ```
 padding: byte[crypto_box_ZEROBYTES];
