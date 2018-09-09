@@ -413,6 +413,34 @@ void cmd_decrypt(char *secretkey) {
   }
 }
 
+void cmd_info() {
+
+  int16_t version;
+  int16_t type;
+
+  read_hdr(stdin, &version, &type);
+  read_buf(stdin, key_id, sizeof(key_id));
+
+  char *t = "unknown";
+  char *lut[] = {"secretkey", "publickey", "signature", "ciphertext"};
+  if (type >= 0 && type < sizeof(lut) / sizeof(char *))
+    t = lut[type];
+
+  char keyid_hex[(sizeof(key_id) * 2) + 1];
+  char *hex = "0123456789abcdef";
+  for (int i = 0; i < sizeof(key_id); i++) {
+    int hi = (key_id[i] & 0xf0) >> 4;
+    int lo = key_id[i] & 0xf;
+
+    keyid_hex[i * 2] = hex[hi];
+    keyid_hex[i * 2 + 1] = hex[lo];
+  }
+  keyid_hex[sizeof(keyid_hex) - 1] = 0;
+
+  if (printf("V%d %s %s\n", version, t, keyid_hex) < 0)
+    die("error writing output\n");
+}
+
 void help() {
 #include "help.inc"
   exit(1);
@@ -436,7 +464,10 @@ int main(int argc, char **argv) {
 
 #define CMD(cmd) (strcmp(argv[1], cmd) == 0 || strncmp(argv[1], cmd, 1) == 0)
   if (CMD("key")) {
-    cmd_key();
+    if (argc == 2)
+      cmd_key();
+    else
+      die("bad argument count for key command\n");
   } else if (CMD("pubkey")) {
     if (argc == 2)
       cmd_pubkey(0);
@@ -475,7 +506,10 @@ int main(int argc, char **argv) {
     else
       die("bad argument count for decrypt command\n");
   } else if (CMD("info")) {
-    die("unimplemented\n");
+    if (argc == 2)
+      cmd_info();
+    else
+      die("bad argument count for info command\n");
   } else {
     help();
   }
