@@ -36,6 +36,8 @@ keyid:         byte[keyid_len]
 signature:     byte[crypto_hash_sha256_BYTES + crypto_sign_BYTES]
 ```
 
+where crypto_sign_open(signature, crypto_sign_pk) == sha256(data_stream)
+
 # Cipher text version 1 format
 
 ```
