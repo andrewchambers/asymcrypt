@@ -67,7 +67,7 @@ void must_read_buf(FILE *f, unsigned char *buf, size_t n) {
 
 int read_buf(FILE *f, unsigned char *buf, size_t n) {
   int nread = fread(buf, 1, n, f);
-  if (nread != sizeof(buf))
+  if (nread != n)
     if (!feof(f))
       die("an error occured");
   return nread;
@@ -350,8 +350,9 @@ void cmd_encrypt(char *publickey) {
 
     increment_nonce();
 
-    if (n < n_to_read)
+    if (n < n_to_read) {
       break;
+    }
   }
 }
 
@@ -486,9 +487,11 @@ int main(int argc, char **argv) {
   }
 #undef CMD
 
-  if (fflush(stdout) != 0) {
+  if (fflush(stdout) != 0)
     die("error flushing output\n");
-  }
+
+  if (fflush(stderr) != 0)
+    die("error flushing error output\n");
 
   return 0;
 }
