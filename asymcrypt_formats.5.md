@@ -41,7 +41,7 @@ signature:     byte[crypto_hash_sha256_BYTES + crypto_sign_BYTES]
 ```
 magic:            "asymcrypt"
 version:          be_u16(1)
-type:             be_u16(2)
+type:             be_u16(3)
 keyid:            byte[keyid_len]
 ivnonce:          byte[crypto_box_NONCEBYTES]
 ephemeral_pubkey: byte[crypto_box_pk_len]
