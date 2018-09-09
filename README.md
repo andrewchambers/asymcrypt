@@ -9,8 +9,7 @@ asymcrypt - A tool for asymmetric cryptography.
 # SYNOPSIS
 
 Generate public or private keys, sign, verify, encrypt or decrypt data.
-Simple, reliable and auditable. The tool does zero memory allocations during usage,
-it is extremely fast.
+Simple, reliable and auditable. The tool does zero memory allocations during usage, so it should be very fast.
 
 # USAGE
 
