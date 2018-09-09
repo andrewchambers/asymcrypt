@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 
 #define KEYID_BYTES 32
+/* must fit inside u16 */
 #define MESSAGE_SIZE 16384
 
 #define TYPE_SECRETKEY 0
@@ -13,8 +14,6 @@
 #define TYPE_SIG 2
 #define TYPE_CIPHERTEXT 3
 #define TYPE_END 4
-
-int has_sk = 0;
 
 unsigned char key_id[KEYID_BYTES];
 unsigned char crypto_box_pk[crypto_box_PUBLICKEYBYTES];
@@ -41,7 +40,7 @@ void write_buf(unsigned char *buf, size_t n) {
   }
 }
 
-void write_i16(int16_t type) {
+void write_u16(int16_t type) {
   unsigned char buf[2];
   buf[0] = (type >> 8) & 0xff;
   buf[1] = type & 0xff;
@@ -52,9 +51,9 @@ void write_hdr(int16_t type) {
   unsigned char *ident = (unsigned char *)"asymcrypt";
   write_buf(ident, strlen("asymcrypt"));
   // version
-  write_i16(1);
+  write_u16(1);
   // type
-  write_i16(type);
+  write_u16(type);
 }
 
 void must_read_buf(FILE *f, unsigned char *buf, size_t n) {
@@ -104,8 +103,6 @@ void read_secret_key(FILE *f) {
   must_read_buf(f, crypto_box_sk, sizeof(crypto_box_sk));
   must_read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
   must_read_buf(f, crypto_sign_sk, sizeof(crypto_sign_sk));
-
-  has_sk = 1;
 }
 
 void read_public_key(FILE *f) {
@@ -123,8 +120,6 @@ void read_public_key(FILE *f) {
   must_read_buf(f, key_id, sizeof(key_id));
   must_read_buf(f, crypto_box_pk, sizeof(crypto_box_pk));
   must_read_buf(f, crypto_sign_pk, sizeof(crypto_sign_pk));
-
-  has_sk = 0;
 }
 
 void read_sig(FILE *f) {
@@ -135,7 +130,7 @@ void read_sig(FILE *f) {
   read_hdr(f, &version, &type);
 
   if (version != 1)
-    die("unknown key version\n");
+    die("unknown signature version\n");
 
   if (type != TYPE_SIG)
     die("input data is not a asymcrypt signature\n");
@@ -244,7 +239,7 @@ void cmd_sign(char *secretkey) {
 
   write_hdr(TYPE_SIG);
   write_buf(key_id, sizeof(key_id));
-  write_i16((int16_t)signed_sha256_len);
+  write_u16((int16_t)signed_sha256_len);
   write_buf(signed_sha256, signed_sha256_len);
 }
 
@@ -331,11 +326,11 @@ void cmd_encrypt(char *publickey) {
   unsigned char out_buf[sizeof(buf)];
 
   while (1) {
-    size_t n_to_read = sizeof(buf) - crypto_box_BOXZEROBYTES - 2;
-    size_t n = read_buf(stdin, buf + crypto_box_BOXZEROBYTES + 2, n_to_read);
+    size_t n_to_read = sizeof(buf) - crypto_box_ZEROBYTES - 2;
+    size_t n = read_buf(stdin, buf + crypto_box_ZEROBYTES + 2, n_to_read);
 
-    buf[crypto_box_BOXZEROBYTES + 0] = (n >> 8) & 0xff;
-    buf[crypto_box_BOXZEROBYTES + 1] = n & 0xff;
+    buf[crypto_box_ZEROBYTES + 0] = (n >> 8) & 0xff;
+    buf[crypto_box_ZEROBYTES + 1] = n & 0xff;
 
     if (crypto_box(out_buf, buf, sizeof(buf), nonce, crypto_box_pk,
                    ephemeral_crypto_box_sk) != 0)
@@ -347,6 +342,61 @@ void cmd_encrypt(char *publickey) {
     increment_nonce();
 
     if (n < n_to_read)
+      break;
+  }
+}
+
+void cmd_decrypt(char *secretkey) {
+
+  if (strlen(secretkey)) {
+    assert_sk_perms(secretkey);
+
+    FILE *f = fopen(secretkey, "rb");
+    if (!f)
+      die("error opening public key\n");
+
+    read_secret_key(f);
+
+    if (fclose(f))
+      die("unable to close key\n");
+  } else {
+    read_secret_key(stdin);
+  }
+
+  int16_t version;
+  int16_t type;
+
+  read_hdr(stdin, &version, &type);
+
+  if (version != 1)
+    die("unknown ciphertext version\n");
+
+  if (type != TYPE_CIPHERTEXT)
+    die("input data is not a asymcrypt ciphertext\n");
+
+  must_read_buf(stdin, ephemeral_crypto_box_pk,
+                sizeof(ephemeral_crypto_box_pk));
+
+  unsigned char in_buf[MESSAGE_SIZE];
+  unsigned char out_buf[sizeof(in_buf)];
+
+  while (1) {
+    must_read_buf(stdin, nonce, sizeof(nonce));
+    must_read_buf(stdin, in_buf, sizeof(in_buf));
+
+    for (int i = 0; i < crypto_box_BOXZEROBYTES; i++)
+      if (in_buf[i] != 0)
+        die("message has corrupt padding\n");
+
+    if (crypto_box_open(out_buf, in_buf, sizeof(in_buf), nonce,
+                        ephemeral_crypto_box_pk, crypto_box_sk) != 0)
+      die("error decrypting stream\n");
+
+    size_t msg_size = (out_buf[crypto_box_ZEROBYTES + 0] << 8) |
+                      out_buf[crypto_box_ZEROBYTES + 0];
+    write_buf(out_buf + crypto_box_ZEROBYTES + 2, msg_size);
+
+    if (msg_size + crypto_box_ZEROBYTES + 2 != MESSAGE_SIZE)
       break;
   }
 }
@@ -394,7 +444,12 @@ int main(int argc, char **argv) {
     else
       die("bad argument count for encrypt command\n");
   } else if (CMD("decrypt")) {
-    die("unimplemented\n");
+    if (argc == 2)
+      cmd_decrypt(0);
+    else if (argc == 3)
+      cmd_decrypt(argv[2]);
+    else
+      die("bad argument count for decrypt command\n");
   } else if (CMD("info")) {
     die("unimplemented\n");
   } else {
