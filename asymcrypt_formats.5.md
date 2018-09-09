@@ -49,7 +49,7 @@ magic:            "asymcrypt"
 version:          be_u16(1)
 type:             be_u16(3)
 keyid:            byte[keyid_len]
-ivnonce:          byte[crypto_box_NONCEBYTES]
+nonce:            byte[crypto_box_NONCEBYTES]
 ephemeral_pubkey: byte[crypto_box_pk_len]
 (
 	message: byte[msgsize=16384];
