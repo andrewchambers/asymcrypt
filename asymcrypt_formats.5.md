@@ -59,16 +59,16 @@ ephemeral_pubkey: byte[crypto_box_pk_len]
 where message is:
 
 ```
-padding: byte[crypto_box_BOXZEROBYTES];
-ciphertext: byte[msgsize-crypto_box_BOXZEROBYTES];
+padding: byte[crypto_box_BOXZEROBYTES]
+ciphertext: byte[msgsize-crypto_box_BOXZEROBYTES]
 ```
 
 where crypto_box_open(message, nonce + msg_index, ephemeral_pubkey, secenckey) is:
 
 ```
-padding: byte[crypto_box_ZEROBYTES];
-msglen: be_u16;
-msg: byte[msglen];
+padding: byte[crypto_box_ZEROBYTES]
+msglen: be_u16
+msg: byte[msglen]
 ... unused bytes till msgsize
 ```
 
