@@ -52,7 +52,7 @@ keyid:            byte[keyid_len]
 nonce:            byte[crypto_box_NONCEBYTES]
 ephemeral_pubkey: byte[crypto_box_pk_len]
 (
-	message: byte[msgsize=16384];
+	message: byte[msgsize=16384]
 )+
 ```
 
