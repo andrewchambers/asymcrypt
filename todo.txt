@@ -1,0 +1,3 @@
+- test suite covering all documented use cases.
+- use frama-c interp mode
+- configure script that can use nacl, tweetnacl, libsodium, hacl.
