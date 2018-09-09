@@ -47,9 +47,9 @@ When decrypting, only verified data is sent to stdout.
 
 When decrypting, a truncated data stream results in error.
 
-If arguments are not specified for encrypt, decrypt, sign and verify, they
-will be read in order from stdin. This allows scripts to never write key material
-to disk.
+If arguments are not specified for pubkey ,encrypt, decrypt,
+sign and verify, they will be read in order from stdin.
+This allows scripts to never write key material to disk.
 
 The info command outputs a single line with 3 fields.
 
