@@ -57,14 +57,18 @@ void write_hdr(int16_t type) {
 }
 
 void must_read_buf(FILE *f, unsigned char *buf, size_t n) {
-  if (fread(buf, 1, n, f) != n)
-    die("error reading input\n");
+  if (fread(buf, 1, n, f) != n) {
+    if (feof(f))
+      die("unexpected end of input");
+    else
+      die("error reading input\n");
+  }
 }
 
 int read_buf(FILE *f, unsigned char *buf, size_t n) {
-  int nread = fread(buf, 1, sizeof(buf), stdin);
+  int nread = fread(buf, 1, n, f);
   if (nread != sizeof(buf))
-    if (!feof(stdin))
+    if (!feof(f))
       die("an error occured");
   return nread;
 }
@@ -321,9 +325,15 @@ void cmd_encrypt(char *publickey) {
   write_hdr(TYPE_CIPHERTEXT);
   write_buf(key_id, sizeof(key_id));
   write_buf(ephemeral_crypto_box_pk, sizeof(ephemeral_crypto_box_pk));
+  write_buf(nonce, sizeof(nonce));
 
   unsigned char buf[MESSAGE_SIZE];
   unsigned char out_buf[sizeof(buf)];
+
+  for (int i = 0; i < sizeof(out_buf); i++)
+    out_buf[i] = 0;
+  for (int i = 0; i < sizeof(buf); i++)
+    buf[i] = 0;
 
   while (1) {
     size_t n_to_read = sizeof(buf) - crypto_box_ZEROBYTES - 2;
@@ -336,7 +346,6 @@ void cmd_encrypt(char *publickey) {
                    ephemeral_crypto_box_sk) != 0)
       die("error encrypting message\n");
 
-    write_buf(nonce, sizeof(nonce));
     write_buf(out_buf, sizeof(out_buf));
 
     increment_nonce();
@@ -374,14 +383,20 @@ void cmd_decrypt(char *secretkey) {
   if (type != TYPE_CIPHERTEXT)
     die("input data is not a asymcrypt ciphertext\n");
 
+  unsigned char stream_keyid[sizeof(key_id)];
+  must_read_buf(stdin, stream_keyid, sizeof(stream_keyid));
+
+  if (memcmp(stream_keyid, key_id, sizeof(key_id)) != 0)
+    die("stream and secret key do not match\n");
+
   must_read_buf(stdin, ephemeral_crypto_box_pk,
                 sizeof(ephemeral_crypto_box_pk));
+  must_read_buf(stdin, nonce, sizeof(nonce));
 
   unsigned char in_buf[MESSAGE_SIZE];
   unsigned char out_buf[sizeof(in_buf)];
 
   while (1) {
-    must_read_buf(stdin, nonce, sizeof(nonce));
     must_read_buf(stdin, in_buf, sizeof(in_buf));
 
     for (int i = 0; i < crypto_box_BOXZEROBYTES; i++)
@@ -392,12 +407,14 @@ void cmd_decrypt(char *secretkey) {
                         ephemeral_crypto_box_pk, crypto_box_sk) != 0)
       die("error decrypting stream\n");
 
-    size_t msg_size = (out_buf[crypto_box_ZEROBYTES + 0] << 8) |
-                      out_buf[crypto_box_ZEROBYTES + 0];
-    write_buf(out_buf + crypto_box_ZEROBYTES + 2, msg_size);
+    size_t data_size = (out_buf[crypto_box_ZEROBYTES + 0] << 8) |
+                       out_buf[crypto_box_ZEROBYTES + 1];
+    write_buf(out_buf + crypto_box_ZEROBYTES + 2, data_size);
 
-    if (msg_size + crypto_box_ZEROBYTES + 2 != MESSAGE_SIZE)
+    if (data_size + crypto_box_ZEROBYTES + 2 != MESSAGE_SIZE)
       break;
+
+    increment_nonce();
   }
 }
 
@@ -407,6 +424,18 @@ void help() {
 }
 
 int main(int argc, char **argv) {
+  if (!freopen(NULL, "rb", stdin))
+    die("unable to switch stdin to binary mode\n");
+
+  if (!freopen(NULL, "wb", stdout))
+    die("unable to switch stdin to binary mode\n");
+
+  if (setvbuf(stdin, 0, _IOFBF, 4096) != 0)
+    die("unable to set stdin buffering\n");
+
+  if (setvbuf(stdout, 0, _IOFBF, 4096) != 0)
+    die("unable to set stdout buffering\n");
+
   if (argc <= 1)
     help();
 
