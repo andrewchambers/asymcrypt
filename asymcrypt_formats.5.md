@@ -63,8 +63,10 @@ where crypto_box_open(message, nonce + msg_index, ephemeral_crypto_box_pk, crypt
 padding: byte[crypto_box_ZEROBYTES];
 msglen: be_u16;
 msg: byte[msglen];
-... unsued bytes till msgsize
+... unused bytes till msgsize
 ```
+
+The last message in the stream will have an underutilized msglen.
 
 
 # SEE ALSO
