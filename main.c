@@ -165,15 +165,6 @@ void cmd_key() {
   write_buf(crypto_sign_sk, sizeof(crypto_sign_sk));
 }
 
-void cmd_pubkey() {
-  read_secret_key(stdin);
-
-  write_hdr(TYPE_PUBLICKEY);
-  write_buf(key_id, sizeof(key_id));
-  write_buf(crypto_box_pk, sizeof(crypto_box_pk));
-  write_buf(crypto_sign_pk, sizeof(crypto_sign_pk));
-}
-
 void assert_sk_perms(char *secretkey) {
   struct stat buffer;
   if (stat(secretkey, &buffer))
@@ -181,6 +172,29 @@ void assert_sk_perms(char *secretkey) {
 
   if ((buffer.st_mode & 0007) != 0)
     die("secret key is world accessible\n");
+}
+
+void cmd_pubkey(char *secretkey) {
+
+  if (secretkey) {
+    assert_sk_perms(secretkey);
+
+    FILE *f = fopen(secretkey, "rb");
+    if (!f)
+      die("error opening secret key\n");
+
+    read_secret_key(f);
+
+    if (fclose(f))
+      die("unable to close key");
+  } else {
+    read_secret_key(stdin);
+  }
+
+  write_hdr(TYPE_PUBLICKEY);
+  write_buf(key_id, sizeof(key_id));
+  write_buf(crypto_box_pk, sizeof(crypto_box_pk));
+  write_buf(crypto_sign_pk, sizeof(crypto_sign_pk));
 }
 
 void hash_stdin() {
@@ -203,16 +217,20 @@ void hash_stdin() {
 
 void cmd_sign(char *secretkey) {
 
-  assert_sk_perms(secretkey);
+  if (secretkey) {
+    assert_sk_perms(secretkey);
 
-  FILE *f = fopen(secretkey, "rb");
-  if (!f)
-    die("error opening secret key\n");
+    FILE *f = fopen(secretkey, "rb");
+    if (!f)
+      die("error opening secret key\n");
 
-  read_secret_key(f);
+    read_secret_key(f);
 
-  if (fclose(f))
-    die("unable to close key");
+    if (fclose(f))
+      die("unable to close key");
+  } else {
+    read_secret_key(stdin);
+  }
 
   hash_stdin();
 
@@ -227,23 +245,31 @@ void cmd_sign(char *secretkey) {
 
 void cmd_verify(char *publickey, char *sigfile) {
 
-  FILE *f = fopen(publickey, "rb");
-  if (!f)
-    die("error opening secret key\n");
+  if (strlen(publickey)) {
+    FILE *f = fopen(publickey, "rb");
+    if (!f)
+      die("error opening secret key\n");
 
-  read_public_key(f);
+    read_public_key(f);
 
-  if (fclose(f))
-    die("unable to close key");
+    if (fclose(f))
+      die("unable to close key");
+  } else {
+    read_public_key(stdin);
+  }
 
-  f = fopen(sigfile, "rb");
-  if (!f)
-    die("error opening secret key\n");
+  if (strlen(sigfile)) {
+    FILE *f = fopen(sigfile, "rb");
+    if (!f)
+      die("error opening secret key\n");
 
-  read_sig(f);
+    read_sig(f);
 
-  if (fclose(f))
-    die("unable to close sig\n");
+    if (fclose(f))
+      die("unable to close sig\n");
+  } else {
+    read_sig(stdin);
+  }
 
   hash_stdin();
 
@@ -274,15 +300,28 @@ int main(int argc, char **argv) {
   if (CMD("key")) {
     cmd_key();
   } else if (CMD("pubkey")) {
-    cmd_pubkey();
+    if (argc == 2)
+      cmd_pubkey(0);
+    else if (argc == 3)
+      cmd_pubkey(argv[2]);
+    else
+      die("bad argument count for pubkey command\n");
   } else if (CMD("sign")) {
-    if (argc != 3)
-      help();
-    cmd_sign(argv[2]);
+    if (argc == 2)
+      cmd_sign(0);
+    else if (argc == 3)
+      cmd_sign(argv[2]);
+    else
+      die("bad argument count for sign command\n");
   } else if (CMD("verify")) {
-    if (argc != 4)
-      help();
-    cmd_verify(argv[2], argv[3]);
+    if (argc == 2)
+      cmd_verify(0, 0);
+    else if (argc == 3)
+      cmd_verify(argv[2], 0);
+    else if (argc == 4)
+      cmd_verify(argv[2], argv[3]);
+    else
+      die("bad argument count for sign command\n");
   } else if (CMD("encrypt")) {
     die("unimplemented\n");
   } else if (CMD("decrypt")) {
