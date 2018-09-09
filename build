@@ -12,6 +12,7 @@ cat README.md | \
 if which pandoc 2> /dev/null
 then
 	pandoc -f markdown -s -t man -o asymcrypt.1 README.md
+	pandoc -f markdown -s -t man -o asymcrypt_formats.5 asymcrypt_formats.5.md
 fi
 # Build command
 
