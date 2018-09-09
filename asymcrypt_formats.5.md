@@ -2,7 +2,11 @@
 % Andrew Chambers
 % 2018
 
-# Private key version 1 format
+# ASYMCRYPT FORMATS
+
+All base constants come from the NACL cryptographic api.
+
+## Private key version 1 format
 
 ```
 magic:         "asymcrypt"
@@ -15,7 +19,7 @@ pubsigkey:     byte[crypto_sign_pk_len]
 secsigkey:     byte[crypto_sign_sk_len]
 ```
 
-# Public key version 1 format
+## Public key version 1 format
 
 ```
 magic:         "asymcrypt"
@@ -26,7 +30,7 @@ pubenckey:     byte[crypto_box_pk_len]
 pubsigkey:     byte[crypto_sign_pk_len]
 ```
 
-# Signature version 1 format
+## Signature version 1 format
 
 ```
 magic:         "asymcrypt"
@@ -38,7 +42,7 @@ signature:     byte[crypto_hash_sha256_BYTES + crypto_sign_BYTES]
 
 where crypto_sign_open(signature, crypto_sign_pk) == sha256(data_stream)
 
-# Cipher text version 1 format
+## Cipher text version 1 format
 
 ```
 magic:            "asymcrypt"
