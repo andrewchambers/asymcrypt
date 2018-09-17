@@ -17,4 +17,4 @@ then
 fi
 
 # Build command
-nim c --verbosity:0 -d:release "-l:$(pkg-config libsodium --libs)" asymcrypt.nim
+nim c --verbosity:0 "-l:$(pkg-config libsodium --libs)" asymcrypt.nim
