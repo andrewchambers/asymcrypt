@@ -6,7 +6,7 @@ set -x
 
 # Extract the usage from the markdown
 cat README.md | \
-  awk '/```/{ cnt+=1; } { if ( cnt == 1 && $1 != "```" ) { print "printf(\"" $0 "\\n\");" } }' > help.inc
+  awk '/```/{ cnt+=1; } { if ( cnt == 1 && $1 != "```" ) { print "echo \"" $0 "\"" } }' > help.inc.nim
 
 # Build man page if pandoc is installed
 if which pandoc 2> /dev/null
@@ -16,4 +16,4 @@ then
 fi
 
 # Build command
-gcc $(pkg-config libsodium --cflags --libs) -g -Wfatal-errors -Wall --pedantic --std=c99 -O2 main.c -o asymcrypt
+nim c --verbosity:0 "-l:$(pkg-config libsodium --libs)" asymcrypt.nim

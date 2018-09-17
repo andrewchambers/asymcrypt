@@ -1,3 +1,4 @@
-help.inc
+help.inc.nim
 asymcrypt.1
 asymcrypt
+nimcache
