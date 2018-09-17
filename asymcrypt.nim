@@ -11,14 +11,11 @@ type
   PubKey = tuple [encBytes: array[crypto_box_PUBLICKEYBYTES, byte],
                   sigBytes: array[crypto_sign_PUBLICKEYBYTES, byte]]
 
-proc readPtr[T](f: Stream, p: ptr T): void =
+proc readToPtr[T](f: Stream, p: ptr T): void =
   let sz = sizeof p[]
   let n = readData(f, p, sz)
   if n != sz:
     raise
-
-proc readSomePtr[T](f: Stream, p: ptr T): int =
-  return readData(f, p, sizeof p[])
 
 const magic_len = 9
 var magic = "asymcrypt"
@@ -29,7 +26,7 @@ proc makeU16(a, b: byte): uint16 =
 
 proc readHeader(f: Stream, version, ty: uint16): void =
   var buf: array[magic_len+4, byte]
-  readPtr(f, addr buf)
+  readToPtr(f, addr buf)
 
   if cast[ptr array[magic_len, char]](addr buf)[] == magic_arr:
     raise
@@ -42,15 +39,15 @@ proc readHeader(f: Stream, version, ty: uint16): void =
 
 proc readKey(f: Stream, k: ref Key): void =
   readHeader(f, 2, 0)
-  readPtr(f, addr k.publicEncBytes)
-  readPtr(f, addr k.secretEncBytes)
-  readPtr(f, addr k.publicSigBytes)
-  readPtr(f, addr k.secretSigBytes)
+  readToPtr(f, addr k.publicEncBytes)
+  readToPtr(f, addr k.secretEncBytes)
+  readToPtr(f, addr k.publicSigBytes)
+  readToPtr(f, addr k.secretSigBytes)
 
-proc readPubKey(f: Stream, k: ref PubKey): void =
+proc readPubKey(f: Stream): PubKey =
   readHeader(f, 2, 1)
-  readPtr(f, addr k.encBytes)
-  readPtr(f, addr k.sigBytes)
+  readToPtr(f, addr result.encBytes)
+  readToPtr(f, addr result.sigBytes)
 
 proc naclCheck(v: cint): void =
   if v != 0:
@@ -108,22 +105,42 @@ proc keyID(k: PubKey): array[crypto_hash_sha256_BYTES, byte] =
   sha256Update(sha, addr k.sigBytes)
   return sha256Final(sha)
 
-#proc encrypt(inStream: Stream, outStream: Stream): void =
-#  var n: int
-#  var buf: array[4096, byte]
-#  var cipherText: array[4096, byte]
+const
+  MESSAGE_SIZE = 16384
 
-#  writeHeader(outStream, 3)
+assert MESSAGE_SIZE > crypto_box_ZEROBYTES
+assert MESSAGE_SIZE < 0xffff
 
-#  while true:
-#    n = readSomePtr(inStream, buf)
-#    
-#    let toEncrypt = buf[0..n]
-#
-#
-#    if n != sizeof(buf):
-#      break
+proc encrypt(inStream, outStream: Stream, to: var PubKey): void =
+  var
+    n: int
+    buf: array[MESSAGE_SIZE, byte]
+    cipherText: array[MESSAGE_SIZE, byte]
+    nonce = randomSecretBoxNonce()
+    fromKey = newKey()
+
+  # 0..crypto_box_ZEROBYTES must be zero required by nacl api
+  for i in 0..crypto_box_ZEROBYTES:
+    buf[i] = 0
+
+  writeHeader(outStream, 3)
+  write(outStream, keyID(to))
+  write(outStream, fromKey.publicEncBytes)
+  write(outStream, nonce)
+
+  while true:
+    let readSize = sizeof(buf) - crypto_box_ZEROBYTES - 2
+    n = readData(inStream, addr buf[crypto_box_ZEROBYTES+2], readSize)
+    buf[crypto_box_ZEROBYTES] = cast[byte]((n and 0xff00) shr 8)
+    buf[crypto_box_ZEROBYTES+1] = cast[byte](n and 0xff)
+    naclcheck(crypto_box(addr cipherText, addr buf, sizeof buf, addr nonce, addr to.encBytes, addr fromKey.secretEncBytes))
+    write(outStream, cipherText)
+    inc nonce
+
+    if n < readSize:
+      break
   
+  flush(outStream)
 
 
 # Commands
@@ -139,22 +156,26 @@ else:
   of "k", "key":
     let outStream = newFileStream(stdout)
     var k = newKey()
+    defer: wipeKey(k)
     writeKey(outStream, k)
-    wipeKey(k)
+    
   of "p", "pubkey":
     let inStream = newFileStream(stdin)
     let outStream = newFileStream(stdout)
     var k = new Key
     readKey(inStream, k)
+    defer: wipeKey(k)
     let pk = pubKey(k)
     writePubKey(outStream, pk)
-    wipeKey(k)
   of "s", "sign":
     echo "sign"
   of "v", "verify":
     echo "verify"
   of "e", "encrypt":
-    echo "encrypt"
+    let inStream = newFileStream(stdin)
+    let outStream = newFileStream(stdout)
+    var pk = readPubKey(inStream)
+    encrypt(inStream, outStream, pk)
   of "d", "decrypt":
     echo "decrypt":
   of "i", "info":
