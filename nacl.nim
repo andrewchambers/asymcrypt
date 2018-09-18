@@ -16,6 +16,7 @@ template NACLConstant (name, value: untyped): untyped =
 NACLConstant(crypto_box_PUBLICKEYBYTES, 32)
 NACLConstant(crypto_box_SECRETKEYBYTES, 32)
 NACLConstant(crypto_box_ZEROBYTES, 32)
+NACLConstant(crypto_box_BOXZEROBYTES, 16)
 NACLConstant(crypto_box_NONCEBYTES, 24)
 NACLConstant(crypto_sign_PUBLICKEYBYTES, 32)
 NACLConstant(crypto_sign_SECRETKEYBYTES, 64)
@@ -28,7 +29,9 @@ proc crypto_hash_sha256_init(state: pointer): void {.header: "sodium.h", importc
 proc crypto_hash_sha256_update(state: pointer, buf:  pointer, n: cint): void {.header: "sodium.h", importc.}
 proc crypto_hash_sha256_final(state: pointer, buf:  pointer): void {.header: "sodium.h", importc.}
 proc crypto_box_keypair(pk, sk: pointer): cint {.header: "sodium.h", importc.}
-proc crypto_box(outBuf, buf: pointer, n: csize, nonce, pk, sk: pointer): cint {.header: "sodium.h", importc.}
+proc crypto_box(c, m: pointer, mlen: csize, n, pk, sk: pointer): cint {.header: "sodium.h", importc.}
+proc crypto_box_open(m, c: pointer, clen: csize, n, pk, sk: pointer): cint {.header: "sodium.h", importc.}
+
 proc crypto_sign_keypair(pk, sk: pointer): cint {.header: "sodium.h", importc.}
 proc randombytes_buf(buf: pointer, size: csize): void {.header: "sodium.h", importc.}
 

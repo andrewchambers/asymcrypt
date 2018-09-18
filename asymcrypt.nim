@@ -21,8 +21,8 @@ const magic_len = 9
 var magic = "asymcrypt"
 var magic_arr = cast[ptr array[magic_len, char]](addr magic)[]
 
-proc makeU16(a, b: byte): uint16 =
-  return cast[uint16](a shl 8) or cast[uint16](b)
+proc makeU16(hi, lo: byte): uint16 =
+  return (cast[uint16](hi) shl 8)  or cast[uint16](lo)
 
 proc readHeader(f: Stream, version, ty: uint16): void =
   var buf: array[magic_len+4, byte]
@@ -114,26 +114,27 @@ assert MESSAGE_SIZE < 0xffff
 proc encrypt(inStream, outStream: Stream, to: var PubKey): void =
   var
     n: int
-    buf: array[MESSAGE_SIZE, byte]
+    plainText: array[MESSAGE_SIZE, byte]
     cipherText: array[MESSAGE_SIZE, byte]
     nonce = randomSecretBoxNonce()
-    fromKey = newKey()
-
-  # 0..crypto_box_ZEROBYTES must be zero required by nacl api
-  for i in 0..crypto_box_ZEROBYTES:
-    buf[i] = 0
+    ephemeralKey = newKey()
 
   writeHeader(outStream, 3)
   write(outStream, keyID(to))
-  write(outStream, fromKey.publicEncBytes)
+  write(outStream, ephemeralKey.publicEncBytes)
   write(outStream, nonce)
 
   while true:
-    let readSize = sizeof(buf) - crypto_box_ZEROBYTES - 2
-    n = readData(inStream, addr buf[crypto_box_ZEROBYTES+2], readSize)
-    buf[crypto_box_ZEROBYTES] = cast[byte]((n and 0xff00) shr 8)
-    buf[crypto_box_ZEROBYTES+1] = cast[byte](n and 0xff)
-    naclcheck(crypto_box(addr cipherText, addr buf, sizeof buf, addr nonce, addr to.encBytes, addr fromKey.secretEncBytes))
+
+    # 0..crypto_box_ZEROBYTES must be zero required by nacl api
+    for i in 0..crypto_box_ZEROBYTES-1:
+      plainText[i] = 0
+
+    let readSize = sizeof(plainText) - crypto_box_ZEROBYTES - 2
+    n = readData(inStream, addr plainText[crypto_box_ZEROBYTES+2], readSize)
+    plainText[crypto_box_ZEROBYTES] = cast[byte]((n and 0xff00) shr 8)
+    plainText[crypto_box_ZEROBYTES+1] = cast[byte](n and 0xff)
+    naclcheck(crypto_box(addr cipherText, addr plainText, sizeof plainText, addr nonce, addr to.encBytes, addr ephemeralKey.secretEncBytes))
     write(outStream, cipherText)
     inc nonce
 
@@ -142,6 +143,37 @@ proc encrypt(inStream, outStream: Stream, to: var PubKey): void =
   
   flush(outStream)
 
+proc decrypt(inStream, outStream: Stream, forKey: ref Key): void = 
+  var
+    forKeyID: array[crypto_box_PUBLICKEYBYTES, byte]
+    ephemeralKeyBytes: array[crypto_box_PUBLICKEYBYTES, byte]
+    plainText: array[MESSAGE_SIZE, byte]
+    cipherText: array[MESSAGE_SIZE, byte]
+    nonce: array[crypto_box_NONCEBYTES, byte]
+
+  readHeader(inStream, 2, 3)
+  readToPtr(inStream, addr forKeyID)
+  readToPtr(inStream, addr ephemeralKeyBytes)
+  readToPtr(inStream, addr nonce)
+  
+  if forKeyID != keyID(pubKey(forKey)):
+    raise
+
+  while true:
+    readToPtr(inStream, addr cipherText)
+    # 0..crypto_box_BOXZEROBYTES-1 must be zero required by nacl api
+    for i in 0..crypto_box_BOXZEROBYTES-1:
+      cipherText[i] = 0
+    naclCheck(crypto_box_open(addr plainText, addr cipherText, sizeof cipherText, addr nonce, addr ephemeralKeyBytes, addr forKey.secretEncBytes))
+    let sz = cast[int](makeU16(plainText[crypto_box_ZEROBYTES], plainText[crypto_box_ZEROBYTES+1]))
+    if (sz+crypto_box_ZEROBYTES+2) > sizeof plainText:
+      raise
+    writeData(outStream, addr plainText[crypto_box_ZEROBYTES+2], sz)
+    if (sz+crypto_box_ZEROBYTES+2) != sizeof plainText:
+      break
+    inc nonce
+  
+  flush(outStream)
 
 # Commands
 
@@ -177,7 +209,12 @@ else:
     var pk = readPubKey(inStream)
     encrypt(inStream, outStream, pk)
   of "d", "decrypt":
-    echo "decrypt":
+    let inStream = newFileStream(stdin)
+    let outStream = newFileStream(stdout)
+    var k = new Key
+    readKey(inStream, k)
+    defer: wipeKey(k)
+    decrypt(inStream, outStream, k)
   of "i", "info":
     echo "info":
   else:
