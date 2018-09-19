@@ -2,6 +2,14 @@ import algorithm, streams, os, system
 
 include "nacl.nim"
 
+# TODO
+# - Load keys etc from disk
+# - Info command
+# - Use precompute
+# - Proper exception/error types
+# - Annotate api with exceptions
+# - Remove useless nulls from encrypted stream
+
 type
   Key = tuple [publicEncBytes: array[crypto_box_PUBLICKEYBYTES, byte],
                secretEncBytes: array[crypto_box_SECRETKEYBYTES, byte],
@@ -10,6 +18,12 @@ type
   
   PubKey = tuple [encBytes: array[crypto_box_PUBLICKEYBYTES, byte],
                   sigBytes: array[crypto_sign_PUBLICKEYBYTES, byte]]
+  
+  KeyID = array[crypto_hash_sha256_BYTES, byte]
+
+  Signature = tuple [signedBy: KeyID,
+                     signedSha256: array[crypto_hash_sha256_BYTES + crypto_sign_BYTES, byte]]
+
 
 proc readToPtr[T](f: Stream, p: ptr T): void =
   let sz = sizeof p[]
@@ -48,6 +62,11 @@ proc readPubKey(f: Stream): PubKey =
   readHeader(f, 2, 1)
   readToPtr(f, addr result.encBytes)
   readToPtr(f, addr result.sigBytes)
+
+proc readSignature(f: Stream): Signature =
+  readHeader(f, 2, 2)
+  readToPtr(f, addr result.signedBy)
+  readToPtr(f, addr result.signedSha256)
 
 proc naclCheck(v: cint): void =
   if v != 0:
@@ -90,13 +109,16 @@ proc writeKey(f: Stream, k: ref Key) =
   write(f, k.secretEncBytes)
   write(f, k.publicSigBytes)
   write(f, k.secretSigBytes)
-  flush(f)
 
 proc writePubKey(f: Stream, k: PubKey) =
   writeHeader(f, 1)
   write(f, k.encBytes)
   write(f, k.sigBytes)
-  flush(f)
+
+proc writeSignature(f: Stream, s: Signature) =
+  writeHeader(f, 2)
+  write(f, s.signedBy)
+  write(f, s.signedSha256)
 
 proc keyID(k: PubKey): array[crypto_hash_sha256_BYTES, byte] =
   var k = k
@@ -104,6 +126,9 @@ proc keyID(k: PubKey): array[crypto_hash_sha256_BYTES, byte] =
   sha256Update(sha, addr k.encBytes)
   sha256Update(sha, addr k.sigBytes)
   return sha256Final(sha)
+
+proc keyID(k: ref Key): array[crypto_hash_sha256_BYTES, byte] =
+  return keyId(pubKey(k))
 
 const
   MESSAGE_SIZE = 16384
@@ -125,7 +150,6 @@ proc encrypt(inStream, outStream: Stream, to: var PubKey): void =
   write(outStream, nonce)
 
   while true:
-
     # 0..crypto_box_ZEROBYTES must be zero required by nacl api
     for i in 0..crypto_box_ZEROBYTES-1:
       plainText[i] = 0
@@ -140,12 +164,10 @@ proc encrypt(inStream, outStream: Stream, to: var PubKey): void =
 
     if n < readSize:
       break
-  
-  flush(outStream)
 
 proc decrypt(inStream, outStream: Stream, forKey: ref Key): void = 
   var
-    forKeyID: array[crypto_box_PUBLICKEYBYTES, byte]
+    forKeyID: array[crypto_hash_sha256_BYTES, byte]
     ephemeralKeyBytes: array[crypto_box_PUBLICKEYBYTES, byte]
     plainText: array[MESSAGE_SIZE, byte]
     cipherText: array[MESSAGE_SIZE, byte]
@@ -172,8 +194,45 @@ proc decrypt(inStream, outStream: Stream, forKey: ref Key): void =
     if (sz+crypto_box_ZEROBYTES+2) != sizeof plainText:
       break
     inc nonce
-  
-  flush(outStream)
+
+proc hashStream(f: Stream): array[crypto_hash_sha256_BYTES, byte] =
+  var 
+    n: int
+    buf: array[4096, byte]
+    sha = sha256Init()
+
+  while true:
+    readToPtr(f, addr buf)
+    n = readData(f, addr buf, sizeof buf)
+    sha256Update(sha, addr buf, n)
+    if n != sizeof buf:
+      break
+
+  return sha256Final(sha)
+
+proc signSha256(h: var array[crypto_hash_sha256_BYTES, byte], k: var ref Key): Signature =
+  result.signedBy = keyID(k)
+  naclcheck crypto_sign(addr result.signedSha256, sizeof result.signedSha256, addr h, sizeof h, addr k.secretSigBytes)
+
+proc verifySig(s: var Signature, h: var array[crypto_hash_sha256_BYTES, byte], k: var PubKey): void =
+  var actual: array[crypto_hash_sha256_BYTES, byte]
+  if keyID(k) != s.signedBy:
+    raise
+  naclcheck crypto_sign_open(addr actual, sizeof actual, addr s.signedSha256, sizeof s.signedSha256, addr k.sigBytes)
+  if actual != h:
+    raise
+
+proc sign(inStream, outStream: Stream, k: var ref Key): void =
+  var 
+    h = hashStream(inStream)
+    sig = signSha256(h, k)
+  writeSignature(outStream, sig)
+
+proc verify(inStream: Stream, sig: var Signature, k: var PubKey): void =
+  var 
+    h = hashStream(inStream)
+
+  verifySig(sig, h, k)
 
 # Commands
 
@@ -181,36 +240,36 @@ proc help(): void =
   include "help.inc.nim"
   quit(QuitFailure)
 
+let inStream = newFileStream(stdin)
+let outStream = newFileStream(stdout)
+
 if paramCount() < 1:
   help()
 else:
   case paramStr(1)
   of "k", "key":
-    let outStream = newFileStream(stdout)
     var k = newKey()
     defer: wipeKey(k)
     writeKey(outStream, k)
-    
   of "p", "pubkey":
-    let inStream = newFileStream(stdin)
-    let outStream = newFileStream(stdout)
     var k = new Key
     readKey(inStream, k)
     defer: wipeKey(k)
     let pk = pubKey(k)
     writePubKey(outStream, pk)
   of "s", "sign":
-    echo "sign"
+    var k = new Key
+    readKey(inStream, k)
+    defer: wipeKey(k)
+    sign(inStream, outStream, k)
   of "v", "verify":
-    echo "verify"
+    var pk = readPubKey(inStream)
+    var s = readSignature(inStream)
+    verify(inStream, s, pk)
   of "e", "encrypt":
-    let inStream = newFileStream(stdin)
-    let outStream = newFileStream(stdout)
     var pk = readPubKey(inStream)
     encrypt(inStream, outStream, pk)
   of "d", "decrypt":
-    let inStream = newFileStream(stdin)
-    let outStream = newFileStream(stdout)
     var k = new Key
     readKey(inStream, k)
     defer: wipeKey(k)
@@ -219,3 +278,5 @@ else:
     echo "info":
   else:
     help()
+
+flush outStream
